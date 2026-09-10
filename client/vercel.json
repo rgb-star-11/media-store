@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/wp-json/:path*",
+      "destination": "https://media-store-api.onrender.com/wp-json/:path*"
+    },
+    {
+      "source": "/previews/:path*",
+      "destination": "https://media-store-api.onrender.com/previews/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
