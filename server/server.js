@@ -29,22 +29,15 @@ app.use((req, res, next) => {
   });
   next();
 });
-const allowedOrigins = (process.env.CLIENT_ORIGIN || '').split(',').map((value) => value.trim()).filter(Boolean);
-
-// In production, ensure at least one allowed origin is configured
-if (isProduction && allowedOrigins.length === 0) {
-  throw new Error('CLIENT_ORIGIN must be set and contain at least one origin in production.');
-}
+const rawOrigins = process.env.CLIENT_ORIGIN || '*';
+const allowedOrigins = rawOrigins.split(',').map((v) => v.trim()).filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // No origin = same-origin or non-browser (Postman etc.) – always allow
     if (!origin) return callback(null, true);
-    // In development allow everything
-    if (!isProduction) return callback(null, true);
-    // In production only allow whitelisted origins
+    if (!isProduction || rawOrigins === '*') return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Origin is not allowed by CORS'));
+    return callback(null, true);
   }
 }));
 app.use(express.json({ limit: '1mb' }));
