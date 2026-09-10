@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body, #root, * {
+    font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif !important;
+  }
+
+  body {
+    @apply bg-zinc-950 text-zinc-100 antialiased selection:bg-amber-500 selection:text-black overflow-x-hidden;
+  }
+
+  /* اسکرول‌بار سفارشی و باریک */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #09090b;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #f59e0b;
+  }
+}
+@keyframes aurora-bg {
+  from {
+    background-position: 50% 50%, 50% 50%;
+  }
+  to {
+    background-position: 350% 50%, 350% 50%;
+  }
+}
+
+.animate-aurora-bg {
+  animation: aurora-bg 60s linear infinite;
+}
+/* کدهای انیمیشن افکت نوری */
+@keyframes aurora-bg {
+  0% {
+    background-position: 50% 50%, 50% 50%;
+  }
+  100% {
+    background-position: 350% 50%, 350% 50%;
+  }
+}
+
+.animate-aurora-bg {
+  /* عدد 20s سرعت حرکت است. برای حرکت آرام‌تر می‌توانید آن را به 60s تغییر دهید */
+  animation: aurora-bg 20s linear infinite;
+}
