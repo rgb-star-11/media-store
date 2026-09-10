@@ -128,6 +128,23 @@ const createDefaultAdmin = async () => {
 createDefaultAdmin();
 
 // ==========================================
+      
+      if (updated) {
+        await existingAdmin.save();
+        console.log('✅ اکانت ادمین بروزرسانی و تایید شد.');
+      } else {
+        console.log('✅ اکانت ادمین از قبل وجود دارد و دسترسی کامل برقرار است.');
+      }
+    }
+  } catch (error) { 
+    console.error('❌ خطا در بررسی/ساخت اکانت ادمین:', error); 
+  }
+};
+
+// اجرای تابع پس از اتصال به دیتابیس
+createDefaultAdmin();
+
+// ==========================================
 // 🌟 تنظیمات فرانت‌اند (React) برای هاست سی‌پنل 🌟
 // ==========================================
 // به سرور می‌گوییم که پوشه dist (سایت شما) را شناسایی و بارگذاری کند
@@ -136,7 +153,11 @@ app.use(express.static(clientDist, { index: false }));
 
 // اگر کاربری آدرسی را زد که مربوط به API نبود، صفحه اصلی سایت باز شود (مخصوص React Router)
 app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(clientDist, 'index.html'));
+  const indexPath = path.join(clientDist, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  return res.json({ status: 'Studio API Server is Online', version: '1.0.0' });
 });
 
 app.use((err, req, res, next) => {
