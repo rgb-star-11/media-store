@@ -3,15 +3,17 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
-
-// ایمپورت مدل و کتابخانه‌های مورد نیاز برای ساخت ادمین
-const User = require('./models/User');
 const bcrypt = require('bcryptjs');
+require('dotenv').config();
+
+const User = require('./models/User');
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 
+// ==========================================
+// بررسی کلیدهای امنیتی برنامه
+// ==========================================
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be set and be at least 32 characters long.');
 }
@@ -29,6 +31,7 @@ app.use((req, res, next) => {
   });
   next();
 });
+
 const rawOrigins = process.env.CLIENT_ORIGIN || '*';
 const allowedOrigins = rawOrigins.split(',').map((v) => v.trim()).filter(Boolean);
 
@@ -40,43 +43,36 @@ app.use(cors({
     return callback(null, true);
   }
 }));
+
 app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// ساخت پوشه previews در صورت عدم وجود (برای جلوگیری از ارور آپلود)
-const previewsDir = path.join(__dirname, 'uploads', 'previews');
-const originalsDir = path.join(__dirname, 'uploads', 'originals');
-for (const directory of [previewsDir, originalsDir]) fs.mkdirSync(directory, { recursive: true });
+// ساخت پوشه‌های آپلود در صورت عدم وجود
+const originalsDir = path.join(__dirname, 'uploads/originals');
+const previewsDir = path.join(__dirname, 'uploads/previews');
+if (!fs.existsSync(originalsDir)) fs.mkdirSync(originalsDir, { recursive: true });
+if (!fs.existsSync(previewsDir)) fs.mkdirSync(previewsDir, { recursive: true });
 
-// دسترسی عمومی به پوشه previews و آپلودها برای نمایش در فرانت‌اند
-app.use('/previews', express.static(previewsDir, { index: false, maxAge: '7d' }));
-
-// ==========================================
-// اتصال به دیتابیس MongoDB (پشتیبانی از هاست و لوکال)
-// ==========================================
-// آدرس دیتابیس را از محیط هاست می‌خواند، اگر نبود به لوکال شما وصل می‌شود
-const mongoURI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mediastore';
-
-mongoose.connect(mongoURI)
-.then(() => console.log('✅ Connected to MongoDB'))
-.catch((err) => console.error('❌ MongoDB Connection Error:', err));
+app.use('/previews', express.static(previewsDir));
 
 // ==========================================
-// مسیرها (Routes)
+// اتصال به دیتابیس MongoDB
 // ==========================================
-const mediaRoutes = require('./routes/mediaRoutes');
-const messageRoutes = require('./routes/messageRoutes');
-const settingsRoutes = require('./routes/settingsRoutes');
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/mediastore';
 
-// اتصال مسیرها به سرور
-app.use('/wp-json/studio/v1/media', mediaRoutes);
-app.use('/wp-json/studio/v1/messages', messageRoutes);
-app.use('/wp-json/studio/v1/settings', settingsRoutes);
-app.use('/wp-json/studio/v1/auth', authRoutes);
-app.use('/wp-json/studio/v1/users', userRoutes);
-app.use('/wp-json/studio/v1/payment', paymentRoutes);
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
+
+// ==========================================
+// مسیرهای اصلی API (Routes)
+// ==========================================
+app.use('/wp-json/studio/v1/auth', require('./routes/authRoutes'));
+app.use('/wp-json/studio/v1/user', require('./routes/userRoutes'));
+app.use('/wp-json/studio/v1/media', require('./routes/mediaRoutes'));
+app.use('/wp-json/studio/v1/settings', require('./routes/settingsRoutes'));
+app.use('/wp-json/studio/v1/messages', require('./routes/messageRoutes'));
+app.use('/wp-json/studio/v1/payment', require('./routes/paymentRoutes'));
 
 // ==========================================
 // کد ساخت اتوماتیک اکانت مدیر سایت (Admin Seed)
@@ -91,7 +87,6 @@ const createDefaultAdmin = async () => {
     const existingAdmin = await User.findOne({ email: adminEmail });
     
     if (!existingAdmin) {
-      // اگر ادمین اصلا وجود نداشت آن را بساز
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(adminPass, salt);
       
@@ -105,7 +100,6 @@ const createDefaultAdmin = async () => {
       });
       console.log('✅ اکانت مدیر اولیه ساخته شد.');
     } else {
-      // اگر وجود داشت ولی نقصی در فیلدها بود، آن را بروزرسانی کن
       let updated = false;
       if (existingAdmin.role !== 'admin') { existingAdmin.role = 'admin'; updated = true; }
       if (!existingAdmin.firstName) { existingAdmin.firstName = 'مدیریت'; updated = true; }
@@ -124,34 +118,14 @@ const createDefaultAdmin = async () => {
   }
 };
 
-// اجرای تابع پس از اتصال به دیتابیس
 createDefaultAdmin();
 
 // ==========================================
-      
-      if (updated) {
-        await existingAdmin.save();
-        console.log('✅ اکانت ادمین بروزرسانی و تایید شد.');
-      } else {
-        console.log('✅ اکانت ادمین از قبل وجود دارد و دسترسی کامل برقرار است.');
-      }
-    }
-  } catch (error) { 
-    console.error('❌ خطا در بررسی/ساخت اکانت ادمین:', error); 
-  }
-};
-
-// اجرای تابع پس از اتصال به دیتابیس
-createDefaultAdmin();
-
+// 🌟 تنظیمات فرانت‌اند (React) 🌟
 // ==========================================
-// 🌟 تنظیمات فرانت‌اند (React) برای هاست سی‌پنل 🌟
-// ==========================================
-// به سرور می‌گوییم که پوشه dist (سایت شما) را شناسایی و بارگذاری کند
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist, { index: false }));
 
-// اگر کاربری آدرسی را زد که مربوط به API نبود، صفحه اصلی سایت باز شود (مخصوص React Router)
 app.get(/.*/, (req, res) => {
   const indexPath = path.join(clientDist, 'index.html');
   if (fs.existsSync(indexPath)) {
