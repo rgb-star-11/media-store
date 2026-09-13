@@ -17,13 +17,18 @@ define('STUDIO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('STUDIO_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 // فراخوانی کلاس‌های هسته پلاگین
-require_once STUDIO_PLUGIN_DIR . 'includes/class-studio-cpt.php';
-require_once STUDIO_PLUGIN_DIR . 'includes/class-studio-rest-api.php';
+if (file_exists(STUDIO_PLUGIN_DIR . 'includes/class-studio-cpt.php')) {
+    require_once STUDIO_PLUGIN_DIR . 'includes/class-studio-cpt.php';
+}
+if (file_exists(STUDIO_PLUGIN_DIR . 'includes/class-studio-rest-api.php')) {
+    require_once STUDIO_PLUGIN_DIR . 'includes/class-studio-rest-api.php';
+}
 
 class Studio_Media_Store_Plugin {
 
     public static function init() {
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_assets']);
+        add_filter('script_loader_tag', [__CLASS__, 'add_module_to_script'], 10, 3);
         add_shortcode('studio_media_store', [__CLASS__, 'render_shortcode']);
         add_action('admin_menu', [__CLASS__, 'add_admin_menu']);
     }
@@ -47,6 +52,13 @@ class Studio_Media_Store_Plugin {
             $js_file = basename($js_files[0]);
             wp_enqueue_script('studio-media-js', $assets_url . $js_file, [], '1.0.0', true);
         }
+    }
+
+    public static function add_module_to_script($tag, $handle, $src) {
+        if ('studio-media-js' === $handle) {
+            return '<script type="module" src="' . esc_url($src) . '" id="studio-media-js-js"></script>';
+        }
+        return $tag;
     }
 
     public static function render_shortcode($atts = []) {
