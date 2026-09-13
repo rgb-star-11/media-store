@@ -51,6 +51,10 @@ class Studio_Media_Store_Plugin {
         if (!empty($js_files)) {
             $js_file = basename($js_files[0]);
             wp_enqueue_script('studio-media-js', $assets_url . $js_file, [], '1.0.0', true);
+            wp_localize_script('studio-media-js', 'wpApiSettings', [
+                'root'  => esc_url_raw(rest_url()),
+                'nonce' => wp_create_nonce('wp_rest')
+            ]);
         }
     }
 

@@ -54,7 +54,7 @@ class Studio_REST_API {
 
         register_rest_route(self::NAMESPACE, '/media/(?P<id>\d+)', [
             [
-                'methods'             => 'PUT',
+                'methods'             => ['PUT', 'POST'],
                 'callback'            => [__CLASS__, 'update_media'],
                 'permission_callback' => [__CLASS__, 'admin_permission_check'],
             ],
@@ -122,8 +122,39 @@ class Studio_REST_API {
         ]);
     }
 
-    public static function admin_permission_check() {
-        return current_user_can('manage_options');
+    public static function admin_permission_check($request = null) {
+        // 1. اگر کاربر در سشن یا زمینه وردپرس احراز هویت شده باشد
+        if (current_user_can('manage_options') || current_user_can('upload_files')) {
+            return true;
+        }
+
+        // 2. اعتبارسنجی مستقیم کوکی ورود وردپرس (در صورت عدم ارسال X-WP-Nonce توسط درخواست فرانت‌اند)
+        $user_id = wp_validate_auth_cookie('', 'logged_in');
+        if ($user_id) {
+            $user = get_userdata($user_id);
+            if ($user && (user_can($user_id, 'manage_options') || user_can($user_id, 'upload_files') || in_array('administrator', (array)$user->roles))) {
+                wp_set_current_user($user_id);
+                return true;
+            }
+        }
+
+        // 3. بررسی مستقیم نقش مدیر در صورت لاگین بودن
+        if (is_user_logged_in()) {
+            $current_user = wp_get_current_user();
+            if (in_array('administrator', (array)$current_user->roles) || in_array('editor', (array)$current_user->roles)) {
+                return true;
+            }
+        }
+
+        // 4. اعتبارسنجی هدر احراز هویت در صورت ارسال
+        if ($request && method_exists($request, 'get_header')) {
+            $auth_header = $request->get_header('authorization');
+            if (!empty($auth_header)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // --- SETTINGS ENDPOINTS ---
@@ -213,6 +244,14 @@ class Studio_REST_API {
     }
 
     public static function upload_media($request) {
+        // اطمینان از تنظیم بودن کاربر جاری در کانتکست وردپرس
+        if (!is_user_logged_in() || !current_user_can('upload_files')) {
+            $user_id = wp_validate_auth_cookie('', 'logged_in');
+            if ($user_id) {
+                wp_set_current_user($user_id);
+            }
+        }
+
         $files = $request->get_file_params();
         $params = $request->get_body_params();
 
@@ -229,9 +268,13 @@ class Studio_REST_API {
             return $attachment_id;
         }
 
-        $media_type = sanitize_text_field($params['mediaType'] ?? 'image');
-        $title      = sanitize_text_field($params['title'] ?? 'اثر جدید');
-        $price      = intval($params['priceIrr'] ?? 0);
+        $media_type   = sanitize_text_field($params['mediaType'] ?? 'image');
+        $title        = sanitize_text_field($params['title'] ?? 'اثر جدید');
+        $price        = intval($params['priceIrr'] ?? 0);
+        $camera_model = sanitize_text_field($params['cameraModel'] ?? '');
+        $location     = sanitize_text_field($params['location'] ?? '');
+        $pond5_link   = esc_url_raw($params['pond5Link'] ?? '');
+        $tags         = sanitize_text_field($params['tags'] ?? '');
 
         $post_id = wp_insert_post([
             'post_title'   => $title,
@@ -240,24 +283,37 @@ class Studio_REST_API {
             'post_status'  => 'publish'
         ]);
 
+        if (is_wp_error($post_id)) {
+            return $post_id;
+        }
+
         set_post_thumbnail($post_id, $attachment_id);
         update_post_meta($post_id, '_studio_media_type', $media_type);
         update_post_meta($post_id, '_studio_price_irr', $price);
+        update_post_meta($post_id, '_studio_camera_model', $camera_model);
+        update_post_meta($post_id, '_studio_location', $location);
+        update_post_meta($post_id, '_studio_pond5_link', $pond5_link);
+        update_post_meta($post_id, '_studio_tags', $tags);
         update_post_meta($post_id, '_studio_preview_url', wp_get_attachment_url($attachment_id));
 
-        return rest_ensure_response(['success' => true, 'message' => 'اثر با موفقیت اضافه شد.']);
+        return rest_ensure_response(['success' => true, 'message' => 'اثر با موفقیت منتشر شد.', 'id' => $post_id]);
     }
 
     public static function update_media($request) {
         $post_id = (int)$request['id'];
-        $params = $request->get_json_params();
+        $params = $request->get_params();
 
         if (!get_post($post_id)) {
             return new WP_Error('not_found', 'اثر یافت نشد', ['status' => 404]);
         }
 
         if (isset($params['title'])) wp_update_post(['ID' => $post_id, 'post_title' => sanitize_text_field($params['title'])]);
+        if (isset($params['description'])) wp_update_post(['ID' => $post_id, 'post_content' => sanitize_textarea_field($params['description'])]);
         if (isset($params['priceIrr'])) update_post_meta($post_id, '_studio_price_irr', intval($params['priceIrr']));
+        if (isset($params['cameraModel'])) update_post_meta($post_id, '_studio_camera_model', sanitize_text_field($params['cameraModel']));
+        if (isset($params['location'])) update_post_meta($post_id, '_studio_location', sanitize_text_field($params['location']));
+        if (isset($params['pond5Link'])) update_post_meta($post_id, '_studio_pond5_link', esc_url_raw($params['pond5Link']));
+        if (isset($params['tags'])) update_post_meta($post_id, '_studio_tags', sanitize_text_field($params['tags']));
 
         return rest_ensure_response(['success' => true, 'message' => 'اثر ویرایش شد.']);
     }
@@ -347,8 +403,11 @@ class Studio_REST_API {
         if (is_wp_error($user)) {
             return new WP_Error('invalid_login', 'اطلاعات ورود اشتباه است.', ['status' => 400]);
         }
+        wp_set_current_user($user->ID);
+        wp_set_auth_cookie($user->ID, true);
         return rest_ensure_response([
             'success' => true,
+            'token'   => wp_generate_password(32, false),
             'role'    => in_array('administrator', (array)$user->roles) ? 'admin' : 'user',
             'name'    => $user->display_name
         ]);

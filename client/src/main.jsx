@@ -5,9 +5,14 @@ import 'vazirmatn/Vazirmatn-font-face.css' // اضافه کردن فونت رس�
 import './index.css'
 import App from './App.jsx'
 
+axios.defaults.withCredentials = true;
+
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (window.wpApiSettings?.nonce) {
+    config.headers['X-WP-Nonce'] = window.wpApiSettings.nonce;
+  }
   return config;
 });
 axios.interceptors.response.use(undefined, (error) => {
